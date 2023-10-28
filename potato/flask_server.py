@@ -649,22 +649,22 @@ def load_all_data(config):
     for page in config.get("pre_annotation_pages", []):
         # TODO Currently we simply remove the language type before -,
         # but we need a more elegant way for this in the future
-        item = {"id": page, "text": page.split("-")[-1][:-5]}
-        instance_id_to_data.update({page: item})
-        instance_id_to_data.move_to_end(page, last=False)
+        item = {"id": page['id'], "text": page['text'] if 'text' in page else page['id'].split("-")[-1][:-5]}
+        instance_id_to_data.update({page['id']: item})
+        instance_id_to_data.move_to_end(page['id'], last=False)
 
     for it in ["prestudy_failed_pages", "prestudy_passed_pages"]:
         for page in config.get(it, []):
             # TODO Currently we simply remove the language type before -,
             # but we need a more elegant way for this in the future
-            item = {"id": page, "text": page.split("-")[-1][:-5]}
-            instance_id_to_data.update({page: item})
-            instance_id_to_data.move_to_end(page, last=False)
+            item = {"id": page['id'], "text": page['text'] if 'text' in page else page['id'].split("-")[-1][:-5]}
+            instance_id_to_data.update({page['id']: item})
+            instance_id_to_data.move_to_end(page['id'], last=False)
 
     for page in config.get("post_annotation_pages", []):
-        item = {"id": page, "text": page.split("-")[-1][:-5]}
-        instance_id_to_data.update({page: item})
-        instance_id_to_data.move_to_end(page, last=True)
+        item = {"id": page['id'], "text": page['text'] if 'text' in page else page['id'].split("-")[-1][:-5]}
+        instance_id_to_data.update({page['id']: item})
+        instance_id_to_data.move_to_end(page['id'], last=True)
 
     # Generate the text to display in instance_id_to_data
     for inst_id in instance_id_to_data:
@@ -722,9 +722,9 @@ def load_all_data(config):
 
             for it in ["pre_annotation", "prestudy_passed", "prestudy_failed", "post_annotation"]:
                 if it + "_pages" in config:
-                    task_assignment[it + "_pages"] = config[it + "_pages"]
+                    task_assignment[it + "_pages"] = [p['id'] if type(p) == dict else p for p in config[it + "_pages"]]
                     for p in config[it + "_pages"]:
-                        task_assignment["assigned"][p] = 0
+                        task_assignment["assigned"][p['id']] = 0
 
             for _id in instance_id_to_data:
                 if _id in task_assignment["assigned"]:
@@ -955,7 +955,7 @@ def update_annotation_state(username, form):
     schema_to_label_to_value = defaultdict(dict)
 
     behavioral_data_dict = {}
-
+    
     did_change = False
     for key in form:
 
@@ -981,7 +981,8 @@ def update_annotation_state(username, form):
                 continue
 
             schema_to_label_to_value[annotation_schema][annotation_label] = annotation_value
-
+    
+            
     # Span annotations are a bit funkier since we're getting raw HTML that
     # we need to post-process on the server side.
     span_annotations = []
@@ -1143,8 +1144,7 @@ def signup():
     # Jiaxin: currently we are just using email as the username
     username = request.form.get("email")
     email = request.form.get("email")
-    password = request.form.get("pass")
-    print(action, username, password)
+    password = request.form.get("pass")    
 
     if action == "signup":
         single_user = {"username": username, "email": email, "password": password}
@@ -1299,7 +1299,8 @@ def sample_instances(username):
     global instance_id_to_data
 
     # check if sampling strategy is specified in configuration, if not, set it as random
-    if "sampling_strategy" not in config["automatic_assignment"] or config["automatic_assignment"]["sampling_strategy"] not in ['random','ordered']:
+    if "sampling_strategy" not in config["automatic_assignment"] \
+           or config["automatic_assignment"]["sampling_strategy"] not in ['random','ordered']:
         logger.debug("Undefined sampling strategy, default to random assignment")
         config["automatic_assignment"]["sampling_strategy"] = "random"
 
@@ -2134,14 +2135,20 @@ def annotate_page(username=None, action=None):
                 # Find all the input, select, and textarea tags with this name
                 # (which was annotated) and figure out which one to fill in
                 input_fields = soup.find_all(["input", "select", "textarea"], {"name": name})
+                
                 for input_field in input_fields:
                     if input_field is None:
                         print("No input for ", name)
                         continue
 
+                    # If it's a slider, set the value for the slider
+                    if input_field['type'] == 'range' and name.startswith('slider:::'):
+                        input_field['value'] = value
+                        continue
+
                     # If it's not a text area, let's see if this is the button
                     # that was checked, and if so mark it as checked
-                    if (input_field.name != "textarea") and ("value" in input_field) and (input_field["value"] != value):
+                    if input_field.name != "textarea" and input_field.has_attr("value") and input_field.get("value") != value:
                         continue
                     else:
                         input_field["checked"] = True
@@ -2153,11 +2160,12 @@ def annotate_page(username=None, action=None):
 
                     # Find the right option and set it as selected if the current
                     # annotation schema is a select box
-                    if label == "select-one":
+                    elif label == "select-one":
                         option = input_field.findChildren("option", {"value": value})[0]
                         option["selected"] = "selected"
 
-    rendered_html = str(soup)  # soup.prettify()
+
+    rendered_html = str(soup)
 
     return rendered_html
 
